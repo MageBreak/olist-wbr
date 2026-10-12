@@ -38,6 +38,15 @@ SOURCES = {
 }
 
 
+DQ_LIMITS = {
+    "dq01_orders_null_or_duplicate_id": 0,
+    "dq02_delivered_before_purchase": 0,
+    "dq03_payment_vs_items_mismatch": 249,
+    "dq04_orders_without_customer": 0,
+    "dq05_delivered_without_delivery_date": 8,
+    "dq06_reviews_one_per_order": 0,
+}
+
 def load_raw(con):
     """Load every CSV as-is (all text). CREATE OR REPLACE makes reruns idempotent."""
     for table, (fname, expected_cols) in SOURCES.items():
@@ -75,6 +84,30 @@ def run_sql_folder(con, folder):
         log.info("%-26s %10s rows", f.stem, f"{n:,}")
 
 
+def run_dq_checks(con):
+    """Each check returns its bad rows. Count them, compare to the limit, alarm if any breach."""
+    files = sorted((SQL_DIR / "checks").glob("*.sql"))
+    if not files:
+        raise FileNotFoundError("No DQ checks found in sql/checks/")
+    breaches = []
+    for f in files:
+        n = con.execute(f"SELECT COUNT(*) FROM (\n{f.read_text()}\n)").fetchone()[0]
+        limit = DQ_LIMITS.get(f.stem, 0)  # unknown/new checks default to strict
+        status = "PASS" if n <= limit else "FAIL"
+        log.info("[%s] %-38s %7s bad rows (limit %s)", status, f.stem, f"{n:,}", limit)
+        if n > limit:
+            breaches.append(f"{f.stem}: {n:,} > {limit}")
+    if breaches:
+        raise RuntimeError("DATA QUALITY ALARM -> " + " | ".join(breaches))
+
+def check_mart_grain(con):
+    """Fan-out guard: the mart must have exactly one row per order."""
+    n_mart = con.execute("SELECT COUNT(*) FROM mart_orders").fetchone()[0]
+    n_orders = con.execute("SELECT COUNT(*) FROM stg_orders").fetchone()[0]
+    if n_mart != n_orders:
+        raise RuntimeError(f"Fan-out detected: mart_orders has {n_mart:,} rows but there are {n_orders:,} orders")
+    log.info("Grain check OK: mart_orders = 1 row per order (%s)", f"{n_mart:,}")
+
 def main():
     log.info("=== Pipeline start ===")
     con = duckdb.connect(str(DB_PATH))
@@ -83,13 +116,17 @@ def main():
         load_raw(con)
         log.info("Step 2/4: build staging tables")
         run_sql_folder(con, "staging")
+        log.info("Step 3/4: data quality checks")
+        run_dq_checks(con)              # alarm here = mart is NOT rebuilt
+        log.info("Step 4/4: build mart")
+        run_sql_folder(con, "marts")
+        check_mart_grain(con)
         log.info("=== Pipeline finished OK ===")
     except Exception as e:
         log.error("PIPELINE FAILED: %s", e)
         sys.exit(1)  # non-zero exit = Airflow/cron know it failed
     finally:
         con.close()
-
 
 if __name__ == "__main__":
     main()
