@@ -1,0 +1,7 @@
+delay_bucket,orders,avg_delay_days,avg_review_score,pct_1_or_2_star
+1. Early 10+ days,61523,-17.0,4.32,8.9
+2. Early 1-9 days,26640,-6.1,4.23,10.0
+3. On the promised day,1280,0.0,4.03,12.4
+4. Late 1-7 days,3600,3.6,2.71,49.4
+5. Late 8+ days,2781,19.4,1.7,79.3
+6. ALL DELIVERED ORDERS,95824,-11.9,4.16,12.8
