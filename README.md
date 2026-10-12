@@ -7,10 +7,12 @@ data-quality alarms, SQL analysis, and a metrics-backed recommendation on custom
 **Stack:** Python 3.12 · DuckDB (single-file analytical database, no server) · matplotlib/seaborn
 
 ## Architecture
-data/raw/.csv ──► raw_ ──► stg_* ──► DQ checks ──► mart_orders ──► analysis SQL ──► CSVs + charts
-(as-is, (typed, (alarm on (1 row per
-all text) cleaned) breach) order)
- **Idempotent:** every table is built with `CREATE OR REPLACE`, so reruns rebuild instead of appending.
+
+    data/raw/*.csv --> raw_*  --> stg_*   --> DQ checks --> mart_orders --> analysis SQL --> CSVs + charts
+                      (as-is,    (typed,     (alarm on     (1 row per
+                       all text)  cleaned)    breach)       order)
+
+- **Idempotent:** every table is built with `CREATE OR REPLACE`, so reruns rebuild instead of appending.
 - **Failure handling:** each step is logged to the console and `pipeline.log`; a missing file, a missing
   column, a SQL error, a DQ breach, or a fan-out in the mart stops the run with a clear message and exit code 1.
 - **DQ gate:** if a check fails, the mart is not rebuilt, so downstream analysis never reads bad data.
