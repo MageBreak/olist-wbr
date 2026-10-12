@@ -8,6 +8,7 @@ import duckdb
 ROOT = Path(__file__).parent
 RAW_DIR = ROOT / "data" / "raw"
 DB_PATH = ROOT / "olist.duckdb"
+SQL_DIR = ROOT / "sql"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,13 +61,28 @@ def load_raw(con):
         log.info("raw_%-22s %10s rows", table, f"{n:,}")
 
 
+def run_sql_folder(con, folder):
+    """Run every .sql file in sql/<folder>/ in name order. Each file builds the table it's named after."""
+    files = sorted((SQL_DIR / folder).glob("*.sql"))
+    if not files:
+        raise FileNotFoundError(f"No .sql files found in sql/{folder}/")
+    for f in files:
+        try:
+            con.execute(f.read_text())
+        except duckdb.Error as e:
+            raise RuntimeError(f"SQL failed in {f.name}: {e}") from e
+        n = con.execute(f"SELECT COUNT(*) FROM {f.stem}").fetchone()[0]
+        log.info("%-26s %10s rows", f.stem, f"{n:,}")
+
+
 def main():
     log.info("=== Pipeline start ===")
     con = duckdb.connect(str(DB_PATH))
     try:
         log.info("Step 1/4: load raw tables")
         load_raw(con)
-        # Steps 2-4 (staging, DQ checks, mart) plug in here next
+        log.info("Step 2/4: build staging tables")
+        run_sql_folder(con, "staging")
         log.info("=== Pipeline finished OK ===")
     except Exception as e:
         log.error("PIPELINE FAILED: %s", e)
