@@ -77,3 +77,10 @@ Known issues run against a fixed baseline: if a count grows, the alarm fires.
 - **Revenue** = item `price + freight_value`. `payment_value` includes installment interest.
 - **Valid order** = any status except `canceled` and `unavailable`.
 - **On time** = delivered on or before the promised calendar day.
+
+![Airflow: a daily run where all three tasks succeeded](report/screenshots/airflow_dag_success.png)
+
+During testing, two overlapping runs hit DuckDB's single-writer lock (log below).
+Fixed with `max_active_runs=1`, so runs queue instead of overlapping.
+
+![Airflow: the DuckDB lock conflict that led to max_active_runs=1](report/screenshots/airflow_lock_error.png)
